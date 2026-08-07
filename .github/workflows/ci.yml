@@ -49,10 +49,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Parity writes files, sets permissions, and renders to a terminal.
+        # Parity writes files, sets POSIX permissions, and renders to a terminal.
         # All three behave differently per platform, so all three are tested.
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.11", "3.12", "3.13", "3.14"]
+        include:
+          # arm64 coverage. Parity's own wheel is py3-none-any, but its one
+          # native dependency (pydantic-core) is architecture-specific, so
+          # "works on arm64" is verified rather than assumed.
+          # macos-latest is already arm64; these add Linux and Windows on arm.
+          - os: ubuntu-24.04-arm
+            python: "3.12"
+          - os: ubuntu-24.04-arm
+            python: "3.13"
+          - os: windows-11-arm
+            python: "3.12"
     steps:
       - uses: actions/checkout@v4
 
@@ -106,6 +117,20 @@ jobs:
 
       - name: Check metadata
         run: twine check dist/*
+
+      - name: Assert the wheel is architecture-independent
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Parity is pure Python. A wheel tagged anything other than
+          # py3-none-any would mean a compiled artefact crept in and the
+          # package silently stopped being portable across architectures.
+          wheel="$(ls dist/*.whl)"
+          echo "built: $wheel"
+          case "$wheel" in
+            *-py3-none-any.whl) echo "architecture-independent wheel confirmed" ;;
+            *) echo "::error::wheel is not py3-none-any: $wheel"; exit 1 ;;
+          esac
 
       - name: Install the wheel in a clean environment
         run: |

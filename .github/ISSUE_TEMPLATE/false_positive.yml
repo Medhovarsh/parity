@@ -1,0 +1,44 @@
+name: False positive
+description: A check flagged something that is not a regression.
+labels: ["bug", "false-positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        These matter more than missed findings. A check that blocks a deploy
+        over a non-issue gets the whole gate switched off.
+
+        **Redact before pasting.** Reduce to the smallest baseline and candidate
+        output that still triggers it.
+
+  - type: input
+    id: check
+    attributes:
+      label: Which check
+      placeholder: "required_fields"
+    validations:
+      required: true
+
+  - type: textarea
+    id: baseline
+    attributes:
+      label: Baseline output (redacted)
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: candidate
+    attributes:
+      label: Candidate output (redacted)
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this is not a regression
+      description: What a consumer of this output would do with each version.
+    validations:
+      required: true

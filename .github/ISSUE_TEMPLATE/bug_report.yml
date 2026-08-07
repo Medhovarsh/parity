@@ -1,0 +1,48 @@
+name: Bug report
+description: Something behaved differently than documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you paste anything:** run output may contain real prompts,
+        model responses, and customer data. Redact it, or reduce the problem to
+        a case that uses the `fake` provider.
+
+        Never attach a baseline file from production.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: |
+        Ideally the exact commands. `parity replay --candidate fake:m1` needs no
+        credentials and reproduces most classification problems.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Output of `parity doctor` and `parity version`, redacted.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: OS and architecture
+      placeholder: "Ubuntu 24.04 arm64 / macOS 15 arm64 / Windows 11 x86_64"
+    validations:
+      required: true

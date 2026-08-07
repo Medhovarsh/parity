@@ -1,0 +1,139 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify without publishing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify the tag is releasable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install --upgrade pip && pip install -e ".[dev]"
+
+      - name: Full quality gate
+        run: |
+          ruff check .
+          ruff format --check .
+          mypy
+          pytest -q
+
+      - name: Assert the tag matches the packaged version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          packaged="$(python -c 'import parity; print(parity.__version__)')"
+          if [ "$tag" != "$packaged" ]; then
+            echo "::error::tag v$tag does not match parity.__version__ ($packaged)"
+            exit 1
+          fi
+          echo "tag and package version agree: $packaged"
+
+      - name: Assert the changelog documents this version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if ! grep -q "^## \[${version}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for [${version}]"
+            exit 1
+          fi
+          echo "changelog documents ${version}"
+
+  build:
+    name: build distributions
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+
+      - name: Verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          twine check dist/*
+          wheel="$(ls dist/*.whl)"
+          case "$wheel" in
+            *-py3-none-any.whl) echo "architecture-independent wheel confirmed" ;;
+            *) echo "::error::wheel is not py3-none-any: $wheel"; exit 1 ;;
+          esac
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install "$wheel"
+          /tmp/verify/bin/parity version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/parity
+    permissions:
+      # Trusted publishing: PyPI verifies this workflow's OIDC identity, so no
+      # long-lived API token is stored anywhere.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: create the GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)." \
+            --verify-tag

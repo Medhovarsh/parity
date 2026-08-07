@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Structured logging, off by default. `--verbose` for human-readable output,
+  `--log-json` for JSON lines, both to stderr. Records carry identifiers and
+  counts only, and every record is passed through the redaction rules so a
+  credential cannot reach a log even by accident.
+- arm64 coverage in CI (Linux and Windows on arm; macOS runners are already
+  arm64), plus a check asserting the built wheel stays `py3-none-any`.
+- Release workflow: tag-triggered, verifies the tag matches the packaged
+  version and that the changelog documents it, publishes via PyPI trusted
+  publishing with no stored token.
+- Dependabot, issue templates, and a pull-request checklist.
+
 ## [0.1.0] - 2026-08-07
 
 Initial release. Model-migration safety wedge.

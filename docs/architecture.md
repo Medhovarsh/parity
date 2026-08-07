@@ -46,6 +46,7 @@ swappable providers, the ability to embed the library without a CLI.
 | `gate.py` | `RunReport` + `GatePolicy` → pass/fail | One small function, so the rule that blocks builds stays reviewable. |
 | `report/` | terminal · markdown · json · junit | Passing cases are not listed; a wall of green trains people not to read. |
 | `security/` | Redaction, resource limits, file permissions | See [SECURITY.md](../SECURITY.md). |
+| `observability.py` | Structured logging, off by default | Records carry identifiers and counts only. `SecretScrubber` runs redaction over every record as defence in depth. Always stderr. |
 | `config.py` | `parity.toml`, discovered by walking up | `tomllib` only. Config names env vars, never holds a key. |
 
 ## Data flow

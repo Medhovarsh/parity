@@ -68,7 +68,11 @@ is entirely optional.
 pip install parity
 ```
 
-Python 3.11+. Linux, macOS, and Windows.
+Python 3.11+. Linux, macOS, and Windows, on **x86_64 and arm64**.
+
+The wheel is `py3-none-any` — pure Python, no compiled artefacts, nothing
+architecture-specific. CI proves it on both architectures rather than
+assuming it, including Linux and Windows on arm.
 
 ## Quickstart
 
@@ -177,6 +181,21 @@ model = "llama3.1"
 
 Any configured provider works as a judge, including one pointed at your own
 gateway.
+
+## Diagnostics
+
+Logging is off by default — the report is the output that matters.
+
+```bash
+parity replay --candidate ollama:llama3.1 --verbose      # human-readable, to stderr
+parity gate    --candidate ollama:llama3.1 --log-json    # JSON lines, for a collector
+```
+
+Logs carry identifiers, counts, durations, and verdicts — never message
+content and never model output. Every record additionally passes through the
+redaction rules on the way out, so a careless log line added in future leaks
+a redaction token instead of a key. Logs go to stderr, so stdout stays clean
+for `--format json | jq`.
 
 ## Security
 

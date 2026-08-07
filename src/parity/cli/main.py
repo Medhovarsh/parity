@@ -41,6 +41,7 @@ from parity.errors import (
     StoreError,
 )
 from parity.gate import evaluate_gate
+from parity.observability import configure_logging
 from parity.replay.runner import RunProgress
 from parity.report import render_junit, render_markdown
 from parity.report.terminal import render_terminal
@@ -123,11 +124,16 @@ def root(
     config: ConfigOption = None,
     quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress progress output.")] = False,
     no_color: Annotated[bool, typer.Option("--no-color", help="Disable ANSI colour.")] = False,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Log diagnostics to stderr.")
+    ] = False,
+    log_json: Annotated[bool, typer.Option("--log-json", help="Emit logs as JSON lines.")] = False,
 ) -> None:
     """Shared options for every subcommand."""
     state: dict[str, Any] = ctx.ensure_object(dict)
     state["config_path"] = config
     state["quiet"] = quiet
+    configure_logging(verbose=verbose, json_format=log_json)
     if no_color:
         console.no_color = True
         err_console.no_color = True

@@ -25,6 +25,7 @@ from parity.adapters.clock import SystemClock
 from parity.classify.classifier import Classifier
 from parity.domain.models import Case, CaseOutcome, ModelRef, RunReport, Verdict
 from parity.errors import ProviderError
+from parity.observability import get_logger
 from parity.ports.clock import Clock
 from parity.ports.provider import LLMProvider
 
@@ -40,6 +41,10 @@ class RunProgress:
 
 
 ProgressCallback = Callable[[RunProgress], None]
+
+#: Identifiers, counts, and durations only. Never a payload — see
+#: :mod:`parity.observability`.
+_log = get_logger("replay")
 
 
 class ReplayRunner:
@@ -92,11 +97,34 @@ class ReplayRunner:
             except ProviderError as exc:
                 last_error = str(exc)
                 if not exc.retryable or attempt == self._max_retries:
+                    _log.debug(
+                        "case failed",
+                        extra={
+                            "case_id": case.case_id,
+                            "attempts": attempt + 1,
+                            "retryable": exc.retryable,
+                            "status_code": exc.status_code,
+                        },
+                    )
                     break
-                self._clock.sleep(self._backoff_delay(attempt))
+                delay = self._backoff_delay(attempt)
+                _log.debug(
+                    "retrying case",
+                    extra={
+                        "case_id": case.case_id,
+                        "attempt": attempt + 1,
+                        "delay_seconds": round(delay, 3),
+                        "status_code": exc.status_code,
+                    },
+                )
+                self._clock.sleep(delay)
                 continue
             except Exception as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
+                _log.warning(
+                    "provider adapter raised an unexpected exception",
+                    extra={"case_id": case.case_id, "exception": type(exc).__name__},
+                )
                 break
             else:
                 elapsed = int((time.perf_counter() - started) * 1000)
@@ -122,6 +150,16 @@ class ReplayRunner:
         ordered: Sequence[Case] = list(cases)
         if not ordered:
             return ()
+
+        _log.info(
+            "replay started",
+            extra={
+                "cases": len(ordered),
+                "candidate": str(self.candidate_ref),
+                "concurrency": self._concurrency,
+                "judge": self._classifier.judge_name,
+            },
+        )
 
         if self._concurrency == 1:
             return tuple(self._run_serial(ordered, on_progress))
