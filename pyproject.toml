@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "parity-ci"
-version = "0.1.0"
+version = "0.2.0"
 description = "Behavioral regression gate for non-deterministic LLM systems."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -53,11 +53,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/parity-dev/parity"
-Documentation = "https://github.com/parity-dev/parity/tree/main/docs"
-Source = "https://github.com/parity-dev/parity"
-Issues = "https://github.com/parity-dev/parity/issues"
-Changelog = "https://github.com/parity-dev/parity/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/Medhovarsh/parity"
+Documentation = "https://github.com/Medhovarsh/parity/tree/main/docs"
+Source = "https://github.com/Medhovarsh/parity"
+Issues = "https://github.com/Medhovarsh/parity/issues"
+Changelog = "https://github.com/Medhovarsh/parity/blob/main/CHANGELOG.md"
 
 [project.scripts]
 parity = "parity.cli.main:main"

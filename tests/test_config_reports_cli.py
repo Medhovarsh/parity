@@ -340,9 +340,13 @@ def run_in(project: Path, *args: str) -> Result:
 
 class TestCli:
     def test_version(self) -> None:
+        # Assert against the package version rather than a literal, so a release
+        # bump does not fail a test that is really about the command working.
+        from parity import __version__
+
         result = runner.invoke(app, ["version"])
         assert result.exit_code == 0
-        assert "0.1" in result.output
+        assert __version__ in result.output
 
     def test_checks_lists_every_check(self) -> None:
         result = runner.invoke(app, ["checks"])
