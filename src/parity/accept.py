@@ -19,12 +19,37 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from parity.domain.models import Case, CaseOutcome, RunReport, Verdict
+from parity.domain.models import (
+    Case,
+    CaseOutcome,
+    InteractionOutput,
+    RunReport,
+    Verdict,
+    canonical_json,
+)
 from parity.ports.store import BaselineStore
 
 #: Verdicts accepted without an explicit case id or ``--force``. These are
 #: changes the checks already found unobjectionable.
 SAFE_VERDICTS: frozenset[Verdict] = frozenset({Verdict.ACCEPTABLE, Verdict.UNVERIFIED})
+
+
+def already_applied(current: InteractionOutput, candidate: InteractionOutput) -> bool:
+    """True when the stored output already *is* the candidate.
+
+    Makes acceptance idempotent. A run report is a static artefact: after
+    accepting it, its outcomes still say ``unverified``, so replaying the same
+    report would otherwise promote the same outputs again — bumping ``revision``
+    and overwriting ``previous_reference`` with a value that is no longer true.
+
+    Compared on content only. ``call_id`` is provider-assigned and random per
+    request, and ``model``/``usage`` describe the call rather than the behaviour.
+    """
+    if current.text != candidate.text:
+        return False
+    signature = sorted((call.name, canonical_json(call.arguments)) for call in current.tool_calls)
+    other = sorted((call.name, canonical_json(call.arguments)) for call in candidate.tool_calls)
+    return signature == other
 
 
 @dataclass
@@ -82,7 +107,7 @@ def plan_acceptance(
             )
             continue
 
-        if outcome.verdict is Verdict.EQUIVALENT:
+        if outcome.verdict is Verdict.EQUIVALENT or already_applied(case.output, outcome.candidate):
             plan.unchanged.append(outcome.case_id)
             continue
 

@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "parity"
+name = "parity-ci"
 version = "0.1.0"
 description = "Behavioral regression gate for non-deterministic LLM systems."
 readme = "README.md"

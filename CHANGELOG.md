@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Distribution renamed to `parity-ci` on PyPI, because `parity` is taken. The
+  import package and the CLI command are both still `parity`.
+
+### Fixed
+
+- `parity accept` is now idempotent. A run report is a static artefact: after
+  accepting it, its outcomes still read `unverified`, so accepting the same
+  report twice re-promoted the same outputs, bumping `revision` and overwriting
+  `previous_reference` with a value that was no longer true. Acceptance now
+  skips cases whose stored output already is the candidate.
+
 ### Added
 
 - `parity diff <case>` — structure-first diff of one case. Field-level for JSON,

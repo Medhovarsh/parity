@@ -17,7 +17,7 @@ shipping on vibes. Traditional CI can't help — it assumes the same input gives
 the same output, and yours doesn't.
 
 ```bash
-pip install parity
+pip install parity-ci
 parity demo          # 10 seconds, no config, no API key, no network
 ```
 
@@ -116,7 +116,7 @@ and you need to know what it breaks.
 ## Install
 
 ```bash
-pip install parity
+pip install parity-ci
 ```
 
 Python 3.11+. Linux, macOS, Windows, on **x86_64 and arm64**. The wheel is

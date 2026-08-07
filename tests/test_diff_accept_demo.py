@@ -16,6 +16,7 @@ from parity.diff import ChangeKind, diff_json, diff_outputs, diff_tool_calls
 from parity.domain.models import (
     CaseOutcome,
     CheckResult,
+    InteractionOutput,
     ModelRef,
     RunReport,
     ToolCall,
@@ -250,6 +251,38 @@ class TestAcceptApplying:
         assert by_id[keep.case_id].output.text == "keep me"
         assert by_id[keep.case_id].revision == 1
         assert by_id[change.case_id].output.text == "new"
+
+    def test_accepting_twice_is_a_no_op(self, populated_store: Any) -> None:
+        """A run report is static: after accepting it, its outcomes still say
+        'unverified'. Re-running the same accept must not promote again, or it
+        bumps revision and overwrites previous_reference with a lie."""
+        case = next(iter(populated_store.iter_cases()))
+        outcome = CaseOutcome(
+            case_id=case.case_id, verdict=Verdict.UNVERIFIED, candidate=make_output("new")
+        )
+        report = build_report(outcome)
+        apply_acceptance(plan_acceptance(report, populated_store), populated_store, report)
+
+        second = plan_acceptance(report, populated_store)
+        assert second.empty
+        assert second.unchanged == [case.case_id]
+        assert next(iter(populated_store.iter_cases())).revision == 2
+
+    def test_already_applied_ignores_provider_assigned_ids(self) -> None:
+        from parity.accept import already_applied
+
+        current = InteractionOutput(
+            text="", tool_calls=(ToolCall(name="t", arguments={"a": 1}, call_id="c1"),)
+        )
+        candidate = InteractionOutput(
+            text="", tool_calls=(ToolCall(name="t", arguments={"a": 1}, call_id="c2"),)
+        )
+        assert already_applied(current, candidate)
+
+    def test_already_applied_detects_real_difference(self) -> None:
+        from parity.accept import already_applied
+
+        assert not already_applied(make_output("a"), make_output("b"))
 
     def test_empty_plan_writes_nothing(self, populated_store: Any) -> None:
         report = build_report()
