@@ -1,0 +1,14 @@
+# Normalise line endings in the repository so the CI matrix (Linux, macOS,
+# Windows) sees identical content and diffs stay clean.
+* text=auto eol=lf
+
+# Fixtures are compared byte-for-byte by tests; never let a checkout rewrite them.
+*.jsonl text eol=lf
+*.json  text eol=lf
+
+# Keep binaries untouched.
+*.png binary
+*.jpg binary
+*.gz  binary
+*.zip binary
+*.db  binary
