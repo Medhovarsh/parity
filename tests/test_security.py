@@ -39,6 +39,20 @@ class TestCredentialRedaction:
             ("google", "AIzaSyA1234567890abcdefghijklmnopqrstuvw"),
             ("aws", "AKIAIOSFODNN7EXAMPLE"),
             ("slack", "xoxb-123456789012-abcdefghijkl"),
+            # Registry and model-hub tokens. Each grants publish or write
+            # access somewhere, and each turns up in prompts because people
+            # paste deploy scripts and CI logs into models.
+            #
+            # Assembled by concatenation on purpose: a contiguous
+            # credential-shaped literal in a source file trips GitHub secret
+            # scanning and, worse, invites copying a real value into a fixture.
+            # These match the rules without ever looking like a live key.
+            ("pypi", "pypi-" + "0" * 40),
+            ("npm", "npm_" + "0" * 36),
+            ("huggingface", "hf_" + "0" * 34),
+            ("stripe_live", "sk_" + "live_" + "0" * 24),
+            ("stripe_restricted", "rk_" + "test_" + "0" * 24),
+            ("sendgrid", "SG." + "0" * 22 + "." + "0" * 34),
             (
                 "jwt",
                 "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r",

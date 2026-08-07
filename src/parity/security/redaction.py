@@ -71,6 +71,18 @@ DEFAULT_RULES: tuple[RedactionRule, ...] = (
     _rule("anthropic_key", r"\bsk-ant-[A-Za-z0-9_\-]{20,}", "credential"),
     _rule("openai_key", r"\bsk-(?:proj-)?[A-Za-z0-9_\-]{20,}", "credential"),
     _rule("github_token", r"\bgh[pousr]_[A-Za-z0-9]{30,}\b", "credential"),
+    # Publishing and model-hub tokens. These reach baselines the same way any
+    # other credential does — someone pastes a deploy script or a CI log into a
+    # prompt — and each grants write access to a package registry.
+    _rule("pypi_token", r"\bpypi-[A-Za-z0-9_\-]{16,}", "credential"),
+    _rule("npm_token", r"\bnpm_[A-Za-z0-9]{30,}\b", "credential"),
+    _rule("huggingface_token", r"\bhf_[A-Za-z0-9]{30,}\b", "credential"),
+    _rule("stripe_key", r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{20,}\b", "credential"),
+    _rule(
+        "sendgrid_key",
+        r"\bSG\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}",
+        "credential",
+    ),
     _rule("slack_token", r"\bxox[baprse]-[A-Za-z0-9\-]{10,}\b", "credential"),
     # Open-ended lengths on purpose. A canonical Google key is AIza + 35 chars,
     # but pinning the length exactly means a longer variant walks straight

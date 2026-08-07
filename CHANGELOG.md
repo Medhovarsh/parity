@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Redaction now strips PyPI, npm, Hugging Face, Stripe, and SendGrid tokens.
+  These reach a baseline the same way any credential does — someone pastes a
+  deploy script or a CI log into a prompt — and each grants publish or write
+  access to a registry. A PyPI token previously passed through in cleartext.
+
 ## [0.2.0] - 2026-08-07
 
 ### Changed
