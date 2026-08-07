@@ -30,7 +30,16 @@ jobs:
           pip install -e "." pip-audit
 
       - name: Audit dependencies
-        run: pip-audit --strict --progress-spinner off
+        # Audit a frozen requirements list rather than the live environment.
+        # Auditing the environment pulls in the project itself, which is not on
+        # PyPI yet, and --strict turns "could not resolve" into a failure.
+        # --skip-editable does not help: under --strict a *skipped* dependency
+        # is also an error. Freezing with --exclude-editable removes the project
+        # and leaves exactly the dependency tree we care about, so --strict can
+        # stay on and a genuinely unauditable dependency still fails the build.
+        run: |
+          pip freeze --exclude-editable > /tmp/audit-requirements.txt
+          pip-audit --strict --progress-spinner off -r /tmp/audit-requirements.txt
 
   static-analysis:
     name: security lint
