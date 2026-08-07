@@ -1,5 +1,12 @@
 # Parity
 
+[![CI](https://github.com/Medhovarsh/parity/actions/workflows/ci.yml/badge.svg)](https://github.com/Medhovarsh/parity/actions/workflows/ci.yml)
+[![Security](https://github.com/Medhovarsh/parity/actions/workflows/security.yml/badge.svg)](https://github.com/Medhovarsh/parity/actions/workflows/security.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![Checked with mypy](https://img.shields.io/badge/mypy-strict-blue)](https://mypy-lang.org/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 **A behavioural regression gate for non-deterministic LLM systems.**
 
 Your provider deprecates a model. You have prompts in production. You have to
