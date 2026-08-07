@@ -19,6 +19,8 @@ from typing import Annotated, Any
 
 import typer
 from rich.console import Console
+from rich.markup import escape
+from rich.panel import Panel
 from rich.table import Table
 
 from parity import __version__
@@ -32,7 +34,8 @@ from parity.config import (
     find_config_file,
     load_config,
 )
-from parity.domain.models import Case, ModelRef, RunReport
+from parity.domain.models import Case, CaseOutcome, CheckStatus, ModelRef, RunReport
+from parity.domain.policy import GatePolicy
 from parity.errors import (
     ConfigError,
     ParityError,
@@ -44,6 +47,7 @@ from parity.gate import evaluate_gate
 from parity.observability import configure_logging
 from parity.replay.runner import RunProgress
 from parity.report import render_junit, render_markdown
+from parity.report.html import render_html
 from parity.report.terminal import render_terminal
 
 
@@ -352,7 +356,7 @@ def gate(
     tag: TagOption = None,
     save: Annotated[bool, typer.Option("--save/--no-save", help="Persist the run report.")] = True,
     output_format: Annotated[
-        str, typer.Option("--format", "-f", help="terminal, markdown, json, or junit.")
+        str, typer.Option("--format", "-f", help="terminal, markdown, html, json, or junit.")
     ] = "terminal",
     out: Annotated[
         Path | None, typer.Option("--out", "-o", help="Write the report to a file.")
@@ -363,7 +367,7 @@ def gate(
         ctx, candidate=candidate, limit=limit, tags=tuple(tag or ()), save=save
     )
     decision = evaluate_gate(report, application.config.gate)
-    _emit(report, output_format, out, decision=decision)
+    _emit(report, output_format, out, decision=decision, application=application)
 
     if not decision.passed:
         raise typer.Exit(int(ExitCode.GATE_FAILED))
@@ -374,12 +378,47 @@ def gate(
 # ---------------------------------------------------------------------------
 
 
+def _baseline_context(
+    application: Application | None, report: RunReport
+) -> tuple[dict[str, str], dict[str, Any]]:
+    """Reference outputs and diffs for the cases in a report.
+
+    The run report stores candidate outputs but not baseline ones, so a rich
+    report has to go back to the store. Failing to read it degrades the report
+    rather than the command.
+    """
+    if application is None:
+        return {}, {}
+    from parity.diff import diff_outputs
+
+    wanted = {o.case_id: o for o in report.outcomes if o.candidate is not None}
+    baselines: dict[str, str] = {}
+    diffs: dict[str, Any] = {}
+    try:
+        store = application.open_baseline()
+    except ParityError:
+        return {}, {}
+    try:
+        for case in store.iter_cases():
+            outcome = wanted.get(case.case_id)
+            if outcome is None or outcome.candidate is None:
+                continue
+            baselines[case.case_id] = case.output.text
+            diffs[case.case_id] = diff_outputs(case.output, outcome.candidate)
+    except ParityError:
+        return baselines, diffs
+    finally:
+        store.close()
+    return baselines, diffs
+
+
 def _emit(
     report: RunReport,
     output_format: str,
     out: Path | None,
     *,
     decision: Any = None,
+    application: Application | None = None,
 ) -> None:
     if output_format == "terminal":
         if out is not None:
@@ -398,9 +437,12 @@ def _emit(
         text = render_junit(report)
     elif output_format == "json":
         text = report.model_dump_json(indent=2)
+    elif output_format == "html":
+        baselines, diffs = _baseline_context(application, report)
+        text = render_html(report, decision, baselines=baselines, diffs=diffs)
     else:
         raise _fail(
-            f"unknown format {output_format!r}; expected terminal, markdown, json, or junit",
+            f"unknown format {output_format!r}; expected terminal, markdown, html, json, or junit",
             ExitCode.CONFIG_ERROR,
         )
 
@@ -420,7 +462,7 @@ def report(
         str | None, typer.Argument(help="Run to render. Defaults to the most recent.")
     ] = None,
     output_format: Annotated[
-        str, typer.Option("--format", "-f", help="terminal, markdown, json, or junit.")
+        str, typer.Option("--format", "-f", help="terminal, markdown, html, json, or junit.")
     ] = "terminal",
     out: Annotated[
         Path | None, typer.Option("--out", "-o", help="Write the report to a file.")
@@ -436,7 +478,7 @@ def report(
             ExitCode.STORE_ERROR,
         )
     decision = evaluate_gate(stored, application.config.gate)
-    _emit(stored, output_format, out, decision=decision)
+    _emit(stored, output_format, out, decision=decision, application=application)
 
 
 @app.command(name="runs")
@@ -589,6 +631,294 @@ def baseline_redact(
         store.close()
 
     console.print(f"[green]rewrote[/green] {written} case(s); redacted {report_total} value(s)")
+
+
+# ---------------------------------------------------------------------------
+# diff / accept / demo
+# ---------------------------------------------------------------------------
+
+
+def _resolve_run(application: Application, run_id: str | None) -> RunReport:
+    runs = application.open_runs()
+    stored = runs.load(run_id) if run_id else runs.load_latest()
+    if stored is None:
+        raise _fail(
+            f"no run found in {runs.location}" + (f" with id {run_id!r}" if run_id else ""),
+            ExitCode.STORE_ERROR,
+        )
+    return stored
+
+
+def _find_outcome(report: RunReport, case_id: str) -> CaseOutcome:
+    exact = [o for o in report.outcomes if o.case_id == case_id]
+    if exact:
+        return exact[0]
+    prefixed = [o for o in report.outcomes if o.case_id.startswith(case_id)]
+    if len(prefixed) == 1:
+        return prefixed[0]
+    if len(prefixed) > 1:
+        raise _fail(
+            f"{case_id!r} matches {len(prefixed)} cases in this run; use a longer prefix",
+            ExitCode.CONFIG_ERROR,
+        )
+    raise _fail(f"no case {case_id!r} in run {report.run_id}", ExitCode.STORE_ERROR)
+
+
+VERDICT_COLOUR: dict[str, str] = {
+    "equivalent": "green",
+    "acceptable": "cyan",
+    "unverified": "yellow",
+    "broken": "red",
+    "error": "magenta",
+}
+
+CHANGE_COLOUR: dict[str, str] = {"removed": "red", "added": "green", "changed": "yellow"}
+
+
+@app.command(name="diff")
+def show_diff(
+    ctx: typer.Context,
+    case_id: Annotated[str, typer.Argument(help="Case id, or a unique prefix.")],
+    run_id: Annotated[
+        str | None, typer.Option("--run", help="Run to read. Defaults to the most recent.")
+    ] = None,
+) -> None:
+    """Show exactly what changed for one case.
+
+    Structure first: a dropped field is one line, not a wall of red. Prose falls
+    back to a word-wrapped unified diff, so an edit localises instead of marking
+    a whole paragraph as changed.
+    """
+    from parity.diff import diff_outputs
+
+    application = _application(ctx)
+    report = _resolve_run(application, run_id)
+    outcome = _find_outcome(report, case_id)
+
+    store = application.open_baseline()
+    try:
+        case = store.get(outcome.case_id)
+    finally:
+        store.close()
+    if case is None:
+        raise _fail(
+            f"case {outcome.case_id} is in the run but no longer in the baseline",
+            ExitCode.STORE_ERROR,
+        )
+
+    colour = VERDICT_COLOUR[outcome.verdict.value]
+    prompt = next(
+        (m.content for m in reversed(case.input.messages) if m.role == "user"),
+        case.input.messages[-1].content,
+    )
+    console.print(
+        Panel(
+            f"[dim]{escape(prompt.strip()[:400])}[/dim]",
+            title=f"[{colour}]{outcome.verdict.value}[/{colour}]  {outcome.case_id[:16]}",
+            title_align="left",
+            border_style="dim",
+        )
+    )
+
+    if outcome.error:
+        console.print(f"[magenta]could not replay:[/magenta] {escape(outcome.error)}")
+        return
+
+    failed = [c for c in outcome.checks if c.status is CheckStatus.FAIL]
+    if failed:
+        console.print("\n[bold]failing checks[/bold]")
+        for check in failed:
+            marker = "[red]x[/red]" if check.blocking_failure else "[yellow]![/yellow]"
+            console.print(f"  {marker} [bold]{check.check}[/bold]  {escape(check.message)}")
+
+    if outcome.candidate is None:
+        return
+
+    diff = diff_outputs(case.output, outcome.candidate)
+    console.print(f"\n[bold]what changed[/bold]  [dim]{escape(diff.summary())}[/dim]")
+
+    if diff.empty:
+        console.print("  [dim]nothing[/dim]")
+        return
+
+    for tool_change in diff.tool_calls:
+        shade = CHANGE_COLOUR[tool_change.kind.value]
+        console.print(f"  [{shade}]{escape(tool_change.render())}[/{shade}]")
+
+    if diff.structured:
+        for field_change in diff.fields:
+            shade = CHANGE_COLOUR[field_change.kind.value]
+            console.print(f"  [{shade}]{escape(field_change.render())}[/{shade}]")
+    else:
+        for line in diff.text_unified():
+            if line.startswith(("---", "+++", "@@")):
+                continue
+            shade = "green" if line.startswith("+") else "red" if line.startswith("-") else "dim"
+            console.print(f"  [{shade}]{escape(line)}[/{shade}]")
+
+    if diff.finish_reason_changed:
+        console.print(
+            f"  [yellow]~ finish reason: {diff.finish_reason_before or 'none'}"
+            f" -> {diff.finish_reason_after or 'none'}[/yellow]"
+        )
+
+    if outcome.judge_rationale:
+        console.print(f"\n[bold]judge[/bold]  [dim]{escape(outcome.judge_rationale)}[/dim]")
+
+
+@app.command()
+def accept(
+    ctx: typer.Context,
+    case_ids: Annotated[
+        list[str] | None,
+        typer.Argument(help="Specific cases to accept. Omit to accept all safe changes."),
+    ] = None,
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run", help="Run to accept from. Defaults to the most recent."),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="Also accept cases classified as broken.")
+    ] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Show what would change and stop.")
+    ] = False,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Do not ask.")] = False,
+) -> None:
+    """Promote candidate outputs into the baseline: the change is now expected.
+
+    This is what keeps a baseline a living specification instead of a snapshot
+    that rots. When a behaviour change is intentional, accept it and the gate
+    stops reporting it.
+
+    Cases classified as broken are refused unless you name them explicitly or
+    pass --force, so a real regression cannot be blessed by accident merely for
+    sharing a run with an intended change.
+    """
+    from parity.accept import apply_acceptance, plan_acceptance
+
+    application = _application(ctx)
+    report = _resolve_run(application, run_id)
+    wanted = frozenset(case_ids) if case_ids else None
+
+    store = application.open_baseline()
+    try:
+        plan = plan_acceptance(report, store, case_ids=wanted, force=force)
+
+        for refused_id, reason in plan.refused:
+            err_console.print(f"[yellow]skipped[/yellow] {refused_id[:16]}: {reason}")
+        for missing_id in plan.missing:
+            err_console.print(
+                f"[yellow]skipped[/yellow] {missing_id[:16]}: no longer in the baseline"
+            )
+
+        if plan.empty:
+            already = (
+                f"; {len(plan.unchanged)} case(s) already equivalent" if plan.unchanged else ""
+            )
+            console.print(f"[dim]nothing to accept{already}[/dim]")
+            return
+
+        table = Table(show_header=True, header_style="bold", box=None)
+        table.add_column("case", style="dim", no_wrap=True)
+        table.add_column("verdict", no_wrap=True)
+        table.add_column("becomes the new reference", overflow="fold")
+        for case, outcome in plan.accepted:
+            preview = (outcome.candidate.text if outcome.candidate else "").strip()
+            table.add_row(
+                case.case_id[:12],
+                outcome.verdict.value,
+                preview.replace("\n", " ")[:70] or "(tool calls only)",
+            )
+        console.print(table)
+
+        if dry_run:
+            console.print(f"\n[dim]{plan.count} case(s) would be updated (dry run)[/dim]")
+            return
+
+        if not yes and not typer.confirm(
+            f"\nAccept {plan.count} case(s) as the new expected behaviour?", default=False
+        ):
+            console.print("aborted")
+            return
+
+        written = apply_acceptance(plan, store, report)
+    finally:
+        store.close()
+
+    console.print(
+        f"[green]accepted[/green] {written} case(s); {report.candidate_ref} is now their reference"
+    )
+
+
+@app.command()
+def demo(
+    html_out: Annotated[
+        Path | None, typer.Option("--html", help="Also write a shareable HTML report here.")
+    ] = None,
+) -> None:
+    """Run a complete example in seconds. No config, no credentials, no network.
+
+    Synthesises a baseline, replays it against a scripted offline model, and
+    shows a real report. Every regression class Parity detects appears once.
+    """
+    from parity.checks.registry import build_pipeline
+    from parity.classify.classifier import Classifier
+    from parity.demo import DEMO_BASELINE_REF, build_demo
+    from parity.diff import diff_outputs
+    from parity.domain.policy import CheckSettings
+    from parity.replay.runner import ReplayRunner
+
+    cases, provider, lessons = build_demo()
+    settings = CheckSettings()
+    runner = ReplayRunner(
+        provider=provider,
+        model="gpt-5-mini",
+        classifier=Classifier(pipeline=build_pipeline(settings), settings=settings),
+        concurrency=1,
+    )
+    outcomes = runner.run(cases)
+    demo_report = runner.build_report(
+        parity_version=__version__,
+        baseline_ref=DEMO_BASELINE_REF,
+        baseline_source="(synthetic demo baseline)",
+        outcomes=outcomes,
+    )
+    decision = evaluate_gate(demo_report, GatePolicy())
+
+    render_terminal(demo_report, decision, console=console)
+
+    console.print("\n[bold]what each case demonstrates[/bold]")
+    by_id = {c.case_id: c for c in cases}
+    for outcome in demo_report.outcomes:
+        case = by_id[outcome.case_id]
+        label = case.tags[0] if case.tags else outcome.case_id[:12]
+        colour = VERDICT_COLOUR[outcome.verdict.value]
+        console.print(f"  [{colour}]{outcome.verdict.value:<11}[/{colour}] [bold]{label}[/bold]")
+        console.print(f"      [dim]{escape(lessons[outcome.case_id])}[/dim]")
+
+    if html_out is not None:
+        baselines = {c.case_id: c.output.text for c in cases}
+        diffs = {
+            o.case_id: diff_outputs(by_id[o.case_id].output, o.candidate)
+            for o in demo_report.outcomes
+            if o.candidate is not None
+        }
+        html_out.parent.mkdir(parents=True, exist_ok=True)
+        html_out.write_text(
+            render_html(demo_report, decision, baselines=baselines, diffs=diffs),
+            encoding="utf-8",
+        )
+        console.print(f"\n[green]wrote[/green] {html_out}")
+
+    console.print(
+        "\n[bold]on your own data that is three commands[/bold]\n"
+        "  [bold]parity init[/bold]\n"
+        "  [bold]parity capture path/to/your/logs.jsonl[/bold]\n"
+        "  [bold]parity gate --candidate ollama:llama3.1[/bold]   [dim]# local, free[/dim]\n"
+        "\nThen [bold]parity diff <case>[/bold] to see a change, and "
+        "[bold]parity accept[/bold] once it is intentional."
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `parity diff <case>` — structure-first diff of one case. Field-level for JSON,
+  tool-call level for agents, word-wrapped unified diff for prose. A dropped
+  field is one line, not a wall of red.
+- `parity accept` — promote candidate outputs into the baseline so an
+  intentional change becomes the new expected behaviour. This is what keeps a
+  baseline a living specification instead of a snapshot that rots. Cases
+  classified as broken are refused unless named explicitly or forced, so a real
+  regression cannot be blessed by accident.
+- `parity demo` — a complete example in seconds with no config, no credentials,
+  and no network. Every regression class appears exactly once, so the output
+  doubles as documentation.
+- `--format html` — a self-contained report with inline diffs, no external
+  assets, and light/dark support. All model output is escaped.
+- Case revision tracking: `revision`, `accepted_at`, and `previous_reference`
+  record that a reference moved and what it was before.
+
 - Structured logging, off by default. `--verbose` for human-readable output,
   `--log-json` for JSON lines, both to stderr. Records carry identifiers and
   counts only, and every record is passed through the redaction rules so a

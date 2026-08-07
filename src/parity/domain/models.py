@@ -220,6 +220,19 @@ class Case(BaseModel):
     expectations: Expectations = Field(default_factory=Expectations)
     redacted: bool = False
 
+    revision: int = 1
+    """Bumped each time a candidate output is accepted as the new reference.
+
+    A baseline is meant to be a *living* specification: when a behaviour change
+    is intentional, you accept it rather than fighting the gate forever. This
+    records that the reference moved, so a reviewer can tell an original capture
+    from an approved change.
+    """
+
+    accepted_at: datetime | None = None
+    previous_reference: ModelRef | None = None
+    """What the reference was before the most recent acceptance."""
+
     @field_validator("captured_at")
     @classmethod
     def _require_tzaware(cls, value: datetime) -> datetime:
@@ -250,6 +263,28 @@ class Case(BaseModel):
             tags=tags,
             expectations=expectations or Expectations(),
             redacted=redacted,
+        )
+
+    def accept(
+        self,
+        candidate: InteractionOutput,
+        candidate_reference: ModelRef,
+        *,
+        at: datetime | None = None,
+    ) -> Case:
+        """Promote a candidate output to be this case's new reference.
+
+        The case id does not change: it is a fingerprint of the *input*, and the
+        input did not move. Only what the model is expected to do with it has.
+        """
+        return self.model_copy(
+            update={
+                "output": candidate,
+                "previous_reference": self.reference,
+                "reference": candidate_reference,
+                "revision": self.revision + 1,
+                "accepted_at": at or utc_now(),
+            }
         )
 
 
