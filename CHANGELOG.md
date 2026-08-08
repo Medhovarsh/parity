@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Releases authenticate with PyPI trusted publishing. The bootstrap token used
+  for the first release is removed; no credential is stored in the repository
+  or in a GitHub secret.
+
 ### Security
 
 - Redaction now strips PyPI, npm, Hugging Face, Stripe, and SendGrid tokens.

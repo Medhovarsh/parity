@@ -112,18 +112,12 @@ jobs:
           name: dist
           path: dist/
 
+      # No `password:`. Authentication is PyPI trusted publishing: PyPI
+      # verifies this workflow's OIDC identity directly, so no credential is
+      # stored in the repository, in a secret, or anywhere else. The `pypi`
+      # environment and `id-token: write` above are what make that work, and
+      # the publisher registered on PyPI must match both.
       - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          # TEMPORARY BOOTSTRAP. Trusted publishing cannot authenticate a
-          # project that does not exist on PyPI yet unless a *pending*
-          # publisher is registered first, and that handshake was rejected.
-          # A scoped token gets the first release out; after it lands, the
-          # project exists, trusted publishing can be configured against it,
-          # and this token and these three lines should be deleted.
-          #
-          # If the secret is absent the action falls back to OIDC, so removing
-          # the secret restores trusted publishing without another edit.
-          password: ${{ secrets.PYPI_API_TOKEN }}
 
   github-release:
     name: create the GitHub release
