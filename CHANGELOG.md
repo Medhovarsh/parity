@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-07
+
 ### Changed
 
 - Releases authenticate with PyPI trusted publishing. The bootstrap token used
@@ -92,6 +94,7 @@ Initial release. Model-migration safety wedge.
 - Stores: JSONL and SQLite.
 - Security layer: redaction, resource limits, restrictive file permissions.
 
-[Unreleased]: https://github.com/Medhovarsh/parity/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Medhovarsh/parity/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Medhovarsh/parity/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Medhovarsh/parity/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Medhovarsh/parity/releases/tag/v0.1.0
